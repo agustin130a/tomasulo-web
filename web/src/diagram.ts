@@ -8,8 +8,9 @@
  * Waiting operands are drawn amber; ready ones green — so you can watch
  * dependencies get satisfied cycle by cycle without extra connector clutter.
  *
- * The SD (store) buffer shows, per store, its Q dependency (the producer of the
- * value being stored, or the ready register) and its Dir (address expression).
+ * The LD and SD buffers show, per entry, the operation and its Dir (address
+ * expression); the SD buffer also shows the Q dependency (the producer of the
+ * value being stored, or the ready register).
  *
  * Dependency data comes straight from the engine: on issue, each operand is
  * either resolved to a value (ValueRegN) or tagged with the producer's
@@ -183,16 +184,18 @@ export function drawDiagram(canvas: HTMLCanvasElement, logic: MainLogic): void {
   const bufTopY = 150;
   const ldX = 40;
   const sdX = 872;
-  const bufW = 90;
+  const ldOpW = 54;
+  const ldDirW = 66;
+  const ldW = ldOpW + ldDirW;
   const sdOpW = 54;
   const sdDirW = 66;
   const sdW = sdOpW + sdDirW;
 
-  const busOpY = 300;
-  const busS1Y = 315;
-  const busS2Y = 330;
-  const rsTopY = 360;
-  const cdbY = 520;
+  const busOpY = 296;
+  const busS1Y = 316;
+  const busS2Y = 336;
+  const rsTopY = 372;
+  const cdbY = 524;
 
   const groups = buildGroups(logic);
   const rsBaseX = [110, 320, 545, 775];
@@ -227,21 +230,35 @@ export function drawDiagram(canvas: HTMLCanvasElement, logic: MainLogic): void {
     if (wb) clippedText(ctx, `${wb.operation}  ${wb.DestReg ?? ''}`, registersX + 4, y + 12, registersW - 6, H);
   }
 
-  // ---- LD Buffer ----
+  // ---- LD Buffer (shows the destination op and Dir = address) ----
   ctx.font = bold; ctx.fillStyle = INK;
   ctx.fillText('LD Buffer (From Memory)', ldX, bufTopY - 8);
+  // column headers
+  ctx.font = small; ctx.fillStyle = '#555';
+  ctx.fillText('Op', ldX + 4, bufTopY - 1 + H);
+  ctx.fillText('Dir', ldX + ldOpW + 4, bufTopY - 1 + H);
+  const ldHdrY = bufTopY + H;
   ctx.font = normal;
   const ldCount = logic.architectureNum[0];
   const ldRows = collectBuffer(logic, 'LOAD', ldCount);
   for (let i = 0; i < ldCount; i++) {
-    const y = bufTopY + i * H;
+    const y = ldHdrY + i * RS_H;
     const inst = ldRows[i];
-    box(ctx, ldX, y, bufW, H, inst ? colorFor(inst.absoluteIndex) : undefined);
+    const fill = inst ? colorFor(inst.absoluteIndex) : undefined;
+    // Op cell (operation + destination register)
+    box(ctx, ldX, y, ldOpW, RS_H, fill);
+    // Dir cell
+    box(ctx, ldX + ldOpW, y, ldDirW, RS_H, fill);
     if (inst) {
-      clippedText(ctx, `${inst.operation} ${inst.DestReg ?? ''}`, ldX + 4, y + 12, bufW - 6, H);
+      ctx.font = normal;
+      clippedText(ctx, inst.operation, ldX + 4, y + 12, ldOpW - 6, RS_H);
+      ctx.font = small;
+      clippedText(ctx, inst.DestReg ?? '', ldX + 4, y + 24, ldOpW - 6, RS_H, '#555');
+      ctx.font = normal;
+      clippedText(ctx, storeDir(inst), ldX + ldOpW + 4, y + 18, ldDirW - 6, RS_H, INK);
     }
   }
-  const ldBottom = bufTopY + ldCount * H;
+  const ldBottom = ldHdrY + ldCount * RS_H;
 
   // ---- SD Buffer (shows Q = dependency being waited on, and Dir = address) ----
   ctx.font = bold; ctx.fillStyle = INK;
@@ -338,23 +355,30 @@ export function drawDiagram(canvas: HTMLCanvasElement, logic: MainLogic): void {
   const s1ColX = (g: RSGroup) => g.x + OP_W + OPERAND_W / 2;
   const s2ColX = (g: RSGroup) => g.x + OP_W + OPERAND_W + OPERAND_W / 2;
 
-  const leftMost = order[0].x;
-  const rightMost = order[order.length - 1].x + RS_W;
+  // Each of the three feeder buses spans only from the first RS column it feeds
+  // to the last, plus its own source tap — no full-width horizontals that run
+  // under unrelated boxes.
+  const opCols = order.map(opColX);
+  const s1Cols = order.map(s1ColX);
+  const s2Cols = order.map(s2ColX);
 
+  // OP bus: fed from the OP queue.
   const opSourceX = opQueueX + 20;
   vline(ctx, opSourceX, topY + logic.OpQueue * H, busOpY, WIRE_OP);
-  hline(ctx, leftMost, Math.max(rightMost, opSourceX), busOpY, WIRE_OP);
-  for (const g of order) vline(ctx, opColX(g), busOpY, rsTopY, WIRE_OP);
+  hline(ctx, Math.min(opSourceX, ...opCols), Math.max(opSourceX, ...opCols), busOpY, WIRE_OP);
+  for (const cx of opCols) vline(ctx, cx, busOpY, rsTopY, WIRE_OP);
 
+  // Src1 bus: fed from the register file (left tap).
   const regSrcX = registersX + 15;
   vline(ctx, regSrcX, topY + regCount * H, busS1Y, WIRE_SRC1);
-  hline(ctx, leftMost, Math.max(rightMost, regSrcX), busS1Y, WIRE_SRC1);
-  for (const g of order) vline(ctx, s1ColX(g), busS1Y, rsTopY, WIRE_SRC1);
+  hline(ctx, Math.min(regSrcX, ...s1Cols), Math.max(regSrcX, ...s1Cols), busS1Y, WIRE_SRC1);
+  for (const cx of s1Cols) vline(ctx, cx, busS1Y, rsTopY, WIRE_SRC1);
 
+  // Src2 bus: fed from the register file (right tap).
   const regSrc2X = registersX + registersW - 15;
   vline(ctx, regSrc2X, topY + regCount * H, busS2Y, WIRE_SRC2);
-  hline(ctx, leftMost, Math.max(rightMost, regSrc2X), busS2Y, WIRE_SRC2);
-  for (const g of order) vline(ctx, s2ColX(g), busS2Y, rsTopY, WIRE_SRC2);
+  hline(ctx, Math.min(regSrc2X, ...s2Cols), Math.max(regSrc2X, ...s2Cols), busS2Y, WIRE_SRC2);
+  for (const cx of s2Cols) vline(ctx, cx, busS2Y, rsTopY, WIRE_SRC2);
 
   // --- Common Data Bus ---
   hline(ctx, ldX, sdX + sdW, cdbY, WIRE_CDB);
@@ -366,9 +390,11 @@ export function drawDiagram(canvas: HTMLCanvasElement, logic: MainLogic): void {
     const cx = g.x + RS_W / 2;
     vline(ctx, cx, rsFuBottom(g), cdbY, WIRE_CDB);
   }
-  vline(ctx, ldX + bufW / 2, ldBottom, cdbY, WIRE_CDB);
+  vline(ctx, ldX + ldW / 2, ldBottom, cdbY, WIRE_CDB);
   vline(ctx, sdX + sdW / 2, cdbY, sdBottom, WIRE_CDB);
-  const cdbToRegX = registersX + registersW + 24;
-  vline(ctx, cdbToRegX, cdbY, topY + regCount * H, WIRE_CDB);
+  // CDB return to the register file, routed down the right margin so it does
+  // not cross the feeder buses.
+  const cdbToRegX = sdX + sdW + 6;
+  vline(ctx, cdbToRegX, cdbY, topY + regCount * H - 8, WIRE_CDB);
   hline(ctx, registersX + registersW, cdbToRegX, topY + regCount * H - 8, WIRE_CDB);
 }
