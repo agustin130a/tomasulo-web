@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Tomasulo Web — Simulador de planificación fuera de orden</title>
+    <meta
+      name="description"
+      content="Simulador web del algoritmo de Tomasulo, ciclo a ciclo, portado de Tomasulo-Visual."
+    />
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Saltar al contenido</a>
+    <header>
+      <h1>Tomasulo Web</h1>
+      <p class="subtitle">Simulador ciclo a ciclo del algoritmo de Tomasulo (Issue → Execute → Write Back)</p>
+    </header>
+
+    <main id="main">
+      <section class="controls" aria-label="Controles de simulación">
+        <div class="control-group">
+          <label for="example-select">Ejemplo</label>
+          <select id="example-select"></select>
+        </div>
+
+        <div class="control-group">
+          <label for="file-input">Cargar archivo .s</label>
+          <input id="file-input" type="file" accept=".s,.asm,text/plain" />
+        </div>
+
+        <div class="control-group buttons" role="group" aria-label="Ejecución">
+          <button id="btn-step" type="button">Paso (1 ciclo)</button>
+          <button id="btn-multi" type="button">Multi-paso</button>
+          <button id="btn-run" type="button">Ejecutar todo</button>
+          <button id="btn-reset" type="button">Reiniciar</button>
+        </div>
+
+        <div class="control-group">
+          <label for="multi-num">Ciclos por multi-paso</label>
+          <input id="multi-num" type="number" min="1" max="100" value="3" />
+        </div>
+
+        <p id="status" class="status" aria-live="polite" role="status">Ciclo 0</p>
+      </section>
+
+      <section aria-label="Diagrama de estaciones de reserva y registros">
+        <h2>Diagrama</h2>
+        <canvas id="diagram" width="900" height="420" aria-hidden="true"></canvas>
+      </section>
+
+      <section aria-label="Tabla de tiempos de las instrucciones">
+        <h2>Tabla de tiempos</h2>
+        <div class="table-wrap">
+          <table id="timing-table">
+            <caption class="sr-only">
+              Ciclos de emisión, ejecución y escritura por instrucción
+            </caption>
+            <thead>
+              <tr>
+                <th scope="col">#</th>
+                <th scope="col">Instrucción</th>
+                <th scope="col">Issue</th>
+                <th scope="col">Exe</th>
+                <th scope="col">Write Back</th>
+                <th scope="col">Estado</th>
+              </tr>
+            </thead>
+            <tbody id="timing-body"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section aria-label="Registros">
+        <h2>Registros ocupados</h2>
+        <div id="registers" class="registers"></div>
+      </section>
+    </main>
+
+    <footer>
+      <p>
+        Portado a web (TypeScript + Canvas) desde
+        <strong>Tomasulo-Visual</strong> (Java Swing). El motor replica ciclo a
+        ciclo la lógica original.
+      </p>
+    </footer>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
