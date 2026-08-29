@@ -31,6 +31,12 @@ const btnMulti = $<HTMLButtonElement>('btn-multi');
 const btnRun = $<HTMLButtonElement>('btn-run');
 const btnReset = $<HTMLButtonElement>('btn-reset');
 const multiNum = $<HTMLInputElement>('multi-num');
+const latLd = $<HTMLInputElement>('lat-ld');
+const latSd = $<HTMLInputElement>('lat-sd');
+const latInt = $<HTMLInputElement>('lat-int');
+const latAdd = $<HTMLInputElement>('lat-add');
+const latMul = $<HTMLInputElement>('lat-mul');
+const latDiv = $<HTMLInputElement>('lat-div');
 const statusEl = $<HTMLParagraphElement>('status');
 const canvas = $<HTMLCanvasElement>('diagram');
 const timingBody = $<HTMLTableSectionElement>('timing-body');
@@ -86,9 +92,25 @@ function loadFromEditor(): void {
   setEditorStatus(`Simulación cargada: ${textLines.length} líneas de .text.`);
 }
 
+/** Read the latency inputs in engine order {ld, sd, int, fpAdd, fpMul, fpDiv}. */
+function readLatencies(): number[] {
+  const val = (el: HTMLInputElement, def: number) => {
+    const n = parseInt(el.value, 10);
+    return Number.isFinite(n) && n >= 1 ? n : def;
+  };
+  return [
+    val(latLd, 2),
+    val(latSd, 2),
+    val(latInt, 1),
+    val(latAdd, 2),
+    val(latMul, 10),
+    val(latDiv, 40),
+  ];
+}
+
 function buildEngine(): void {
   const { textLines } = parseFile(loadedSource);
-  logic = new MainLogic(textLines);
+  logic = new MainLogic(textLines, { architectureCycle: readLatencies() });
   logic.initLabelMap();
   render();
 }

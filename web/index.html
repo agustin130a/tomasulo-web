@@ -50,9 +50,46 @@
         </details>
       </section>
 
+      <section aria-label="Configuración de latencias de las unidades funcionales">
+        <details id="latency-details" open>
+          <summary>Latencias de las unidades funcionales (ciclos)</summary>
+          <p class="hint">
+            Ciclos de ejecución de cada unidad funcional. Valores por defecto
+            del PDF de Arquitectura 2020: LD=2, SD=2, Entera=1, ADD/SUB=2,
+            MUL=10, DIV=40. Cambiá un valor y pulsá <strong>Cargar / Simular</strong>.
+          </p>
+          <div class="latency-grid">
+            <div class="control-group">
+              <label for="lat-ld">LD (load)</label>
+              <input id="lat-ld" type="number" min="1" max="100" value="2" />
+            </div>
+            <div class="control-group">
+              <label for="lat-sd">SD (store)</label>
+              <input id="lat-sd" type="number" min="1" max="100" value="2" />
+            </div>
+            <div class="control-group">
+              <label for="lat-int">Entera</label>
+              <input id="lat-int" type="number" min="1" max="100" value="1" />
+            </div>
+            <div class="control-group">
+              <label for="lat-add">ADD/SUB (FP)</label>
+              <input id="lat-add" type="number" min="1" max="100" value="2" />
+            </div>
+            <div class="control-group">
+              <label for="lat-mul">MUL (FP)</label>
+              <input id="lat-mul" type="number" min="1" max="100" value="10" />
+            </div>
+            <div class="control-group">
+              <label for="lat-div">DIV (FP)</label>
+              <input id="lat-div" type="number" min="1" max="100" value="40" />
+            </div>
+          </div>
+        </details>
+      </section>
+
       <section aria-label="Diagrama de estaciones de reserva y registros">
         <h2>Diagrama</h2>
-        <canvas id="diagram" width="1000" height="520" aria-hidden="true"></canvas>
+        <canvas id="diagram" width="1000" height="560" aria-hidden="true"></canvas>
 
         <div class="run-controls">
           <div class="control-group buttons" role="group" aria-label="Ejecución">

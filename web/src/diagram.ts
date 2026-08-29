@@ -1,14 +1,19 @@
 /**
  * Canvas renderer that reproduces the "Tomasulo Dynamic Chart" of the original
- * Java Swing app (Diagram.java): OP Queue, Registers, LD/SD buffers, the four
- * reservation-station groups (IntegerFU, FPadder, FPmult, FPdiv) each shown as
- * rows of [op | src1 | src2], the functional-unit labels, the Common Data Bus,
- * and the connecting buses.
+ * Java Swing app (Diagram.java) AND makes operand dependencies explicit.
  *
- * Wiring is drawn as clean orthogonal buses on separate vertical levels so the
- * op / src1 / src2 feeders never overlap each other or the boxes. All cell text
- * is clipped to its box width. Cells are colored by instruction index (the same
- * palette keys the Cycles table).
+ * Each reservation-station row shows, per source operand, whether the value is
+ * READY (Vj — the source register value is available) or WAITING on a producing
+ * instruction (Qj → "#N", i.e. it needs instruction N to write back first).
+ * Waiting operands are drawn amber; ready ones green. When a waiting instruction
+ * and its producer are both visible, a thin amber connector links them; the
+ * connector disappears once the dependency resolves — so you can watch
+ * dependencies get satisfied cycle by cycle.
+ *
+ * Dependency data comes straight from the engine: on issue, each operand is
+ * either resolved to a value (ValueRegN) or tagged with the producer's
+ * absoluteIndex (waiForIndexRegN). judgeExeStart fills ValueRegN once the
+ * producer reaches End — exactly the moment the dependency is satisfied.
  */
 import type { MainLogic, InstructionInfo } from './engine/mainLogic.ts';
 
@@ -23,10 +28,15 @@ const WIRE_OP = '#6aa84f';
 const WIRE_SRC1 = '#e69138';
 const WIRE_SRC2 = '#3d85c6';
 const WIRE_CDB = '#e06c9f';
+const READY = '#2e7d32';       // ready operand (green)
+const WAIT = '#e67e22';        // waiting operand (amber)
+const WAIT_FILL = '#fff3e0';
+const READY_FILL = '#e8f5e9';
 
-const H = 16; // cell height
-const OP_W = 34;
-const OPERAND_W = 54;
+const H = 16;                  // queue/buffer cell height
+const RS_H = 28;               // reservation-station row height (two lines)
+const OP_W = 40;
+const OPERAND_W = 80;
 const RS_W = OP_W + 2 * OPERAND_W;
 
 interface RSGroup {
@@ -37,8 +47,23 @@ interface RSGroup {
   x: number;
 }
 
+/** Per-operand dependency status. */
+type OperandStatus =
+  | { kind: 'none' }                       // no register source (immediate / unused)
+  | { kind: 'ready'; reg: string }         // value available (Vj)
+  | { kind: 'wait'; reg: string; on: number }; // waiting on producer instruction #on (Qj)
+
+function operandStatus(inst: InstructionInfo, which: 1 | 2): OperandStatus {
+  const reg = which === 1 ? inst.SourceReg1 : inst.SourceReg2;
+  const wait = which === 1 ? inst.waiForIndexReg1 : inst.waiForIndexReg2;
+  const val = which === 1 ? inst.ValueReg1 : inst.ValueReg2;
+  if (reg == null) return { kind: 'none' };
+  if (wait != null && val == null) return { kind: 'wait', reg, on: wait };
+  return { kind: 'ready', reg };
+}
+
 function buildGroups(logic: MainLogic): Record<string, RSGroup> {
-  const num = logic.architectureNum; // {ld, sd, int, fpAdd, fpMul, fpDiv}
+  const num = logic.architectureNum;
   const groups: Record<string, RSGroup> = {
     INT: { key: 'INT', label: 'IntegerFU', count: num[2], rows: new Array(num[2]).fill(null), x: 0 },
     ADD: { key: 'ADD', label: 'FPadder', count: num[3], rows: new Array(num[3]).fill(null), x: 0 },
@@ -68,43 +93,31 @@ function collectBuffer(logic: MainLogic, op: 'LOAD' | 'SAVE', count: number): (I
   return rows;
 }
 
-function box(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, fill?: string) {
-  if (fill) {
-    ctx.fillStyle = fill;
-    ctx.fillRect(x + 1, y + 1, w - 1, h - 1);
-  }
-  ctx.strokeStyle = INK;
+function box(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, fill?: string, stroke = INK) {
+  if (fill) { ctx.fillStyle = fill; ctx.fillRect(x + 1, y + 1, w - 1, h - 1); }
+  ctx.strokeStyle = stroke;
   ctx.lineWidth = 1;
   ctx.strokeRect(x, y, w, h);
 }
 
-/** Draw text clipped to a box so it never overflows. */
-function clippedText(ctx: CanvasRenderingContext2D, s: string, x: number, y: number, w: number, color = INK) {
+function clippedText(ctx: CanvasRenderingContext2D, s: string, x: number, y: number, w: number, h: number, color = INK) {
   ctx.save();
   ctx.beginPath();
-  ctx.rect(x - 2, y - H, w + 2, H + 2);
+  ctx.rect(x - 2, y - h, w + 2, h + 4);
   ctx.clip();
   ctx.fillStyle = color;
   ctx.fillText(s, x, y);
   ctx.restore();
 }
 
-function hline(ctx: CanvasRenderingContext2D, x1: number, x2: number, y: number, color: string) {
-  ctx.strokeStyle = color;
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.moveTo(x1, y);
-  ctx.lineTo(x2, y);
-  ctx.stroke();
+function hline(ctx: CanvasRenderingContext2D, x1: number, x2: number, y: number, color: string, width = 2) {
+  ctx.strokeStyle = color; ctx.lineWidth = width;
+  ctx.beginPath(); ctx.moveTo(x1, y); ctx.lineTo(x2, y); ctx.stroke();
 }
 
 function vline(ctx: CanvasRenderingContext2D, x: number, y1: number, y2: number, color: string, arrow = false) {
-  ctx.strokeStyle = color;
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.moveTo(x, y1);
-  ctx.lineTo(x, y2);
-  ctx.stroke();
+  ctx.strokeStyle = color; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(x, y1); ctx.lineTo(x, y2); ctx.stroke();
   if (arrow) {
     const dir = y2 > y1 ? 1 : -1;
     ctx.fillStyle = color;
@@ -124,14 +137,15 @@ function opQueueEntries(logic: MainLogic): string[] {
     const k = start + j;
     if (logic.isEnd || k >= logic.InstructionFullList.length) { out.push(''); continue; }
     let raw = logic.InstructionFullList[k];
-    // Strip the comment FIRST (a comment like "; S3: MULT ..." can contain ':').
     raw = raw.split(';')[0];
-    // Then drop a leading label ("main: l.d ...").
     if (raw.split(':').length > 1) raw = raw.split(':').slice(1).join(':');
     out.push(raw.trim());
   }
   return out;
 }
+
+/** Center point of the anchor for an instruction (by absoluteIndex) if visible. */
+type Anchor = { x: number; y: number };
 
 export function drawDiagram(canvas: HTMLCanvasElement, logic: MainLogic): void {
   const ctx = canvas.getContext('2d');
@@ -146,51 +160,59 @@ export function drawDiagram(canvas: HTMLCanvasElement, logic: MainLogic): void {
 
   const bold = 'bold 11px Arial, sans-serif';
   const normal = '10px Arial, sans-serif';
+  const small = '9px Arial, sans-serif';
 
-  // Cycle counter, top-right corner (out of the way)
-  ctx.font = bold;
-  ctx.fillStyle = INK;
+  ctx.font = bold; ctx.fillStyle = INK;
   ctx.fillText(`Ciclo ${logic.CycleNumCur}`, W - 90, 20);
 
+  // Legend
+  ctx.font = small;
+  const legY = 20;
+  ctx.fillStyle = READY; ctx.fillRect(20, legY - 9, 10, 10);
+  ctx.fillStyle = INK; ctx.fillText('operando listo (Vj)', 34, legY);
+  ctx.fillStyle = WAIT; ctx.fillRect(150, legY - 9, 10, 10);
+  ctx.fillStyle = INK; ctx.fillText('esperando #N (Qj)', 164, legY);
+
   // --- Layout ---
-  const topY = 60;              // top row of OP Queue / Registers boxes
+  const topY = 60;
   const opQueueX = 470;
   const opQueueW = 150;
   const registersX = 660;
   const registersW = 120;
-  const bufTopY = 150;          // LD/SD buffers top
+  const bufTopY = 150;
   const ldX = 40;
   const sdX = 900;
   const bufW = 90;
 
-  // Three feeder bus levels (well separated) between the queues and the RS row
   const busOpY = 300;
   const busS1Y = 315;
   const busS2Y = 330;
-  const rsTopY = 360;           // RS groups top
-  const cdbY = 470;             // Common Data Bus
+  const rsTopY = 360;
+  const cdbY = 520;
 
   const groups = buildGroups(logic);
-  const rsBaseX = [120, 330, 560, 790];
+  const rsBaseX = [110, 320, 545, 775];
   groups.INT.x = rsBaseX[0];
   groups.ADD.x = rsBaseX[1];
   groups.MUL.x = rsBaseX[2];
   groups.DIV.x = rsBaseX[3];
   const order: RSGroup[] = [groups.INT, groups.ADD, groups.MUL, groups.DIV];
 
+  // Anchors: where each in-flight instruction (by absoluteIndex) is drawn, so we
+  // can draw dependency connectors from a waiting operand to its producer.
+  const anchors = new Map<number, Anchor>();
+
   // ---- OP Queue ----
   ctx.font = bold; ctx.fillStyle = INK;
   ctx.fillText('OP Queue', opQueueX, topY - 8);
   const opEntries = opQueueEntries(logic);
   ctx.font = normal;
-  // Original layout: the next-to-issue instruction sits at the BOTTOM row and
-  // pending instructions stack upward (Diagram.java draws with originY - h*q).
   for (let i = 0; i < logic.OpQueue; i++) {
     const rowFromBottom = logic.OpQueue - 1 - i;
     const y = topY + rowFromBottom * H;
     const entry = opEntries[i];
     box(ctx, opQueueX, y, opQueueW, H, entry ? colorFor(logic.instructionLineCur + i) : undefined);
-    if (entry) clippedText(ctx, entry, opQueueX + 4, y + 12, opQueueW - 6);
+    if (entry) clippedText(ctx, entry, opQueueX + 4, y + 12, opQueueW - 6, H);
   }
 
   // ---- Registers (write-back list) ----
@@ -202,7 +224,7 @@ export function drawDiagram(canvas: HTMLCanvasElement, logic: MainLogic): void {
     const y = topY + i * H;
     const wb = logic.wbList[i];
     box(ctx, registersX, y, registersW, H, wb ? colorFor(wb.absoluteIndex) : undefined);
-    if (wb) clippedText(ctx, `${wb.operation}  ${wb.DestReg ?? ''}`, registersX + 4, y + 12, registersW - 6);
+    if (wb) clippedText(ctx, `${wb.operation}  ${wb.DestReg ?? ''}`, registersX + 4, y + 12, registersW - 6, H);
   }
 
   // ---- LD Buffer ----
@@ -213,8 +235,12 @@ export function drawDiagram(canvas: HTMLCanvasElement, logic: MainLogic): void {
   const ldRows = collectBuffer(logic, 'LOAD', ldCount);
   for (let i = 0; i < ldCount; i++) {
     const y = bufTopY + i * H;
-    box(ctx, ldX, y, bufW, H, ldRows[i] ? colorFor(ldRows[i]!.absoluteIndex) : undefined);
-    if (ldRows[i]) clippedText(ctx, ldRows[i]!.operation, ldX + 4, y + 12, bufW - 6);
+    const inst = ldRows[i];
+    box(ctx, ldX, y, bufW, H, inst ? colorFor(inst.absoluteIndex) : undefined);
+    if (inst) {
+      clippedText(ctx, `${inst.operation} ${inst.DestReg ?? ''}`, ldX + 4, y + 12, bufW - 6, H);
+      anchors.set(inst.absoluteIndex, { x: ldX + bufW, y: y + H / 2 });
+    }
   }
   const ldBottom = bufTopY + ldCount * H;
 
@@ -226,34 +252,68 @@ export function drawDiagram(canvas: HTMLCanvasElement, logic: MainLogic): void {
   const sdRows = collectBuffer(logic, 'SAVE', sdCount);
   for (let i = 0; i < sdCount; i++) {
     const y = bufTopY + i * H;
-    box(ctx, sdX, y, bufW, H, sdRows[i] ? colorFor(sdRows[i]!.absoluteIndex) : undefined);
-    if (sdRows[i]) clippedText(ctx, sdRows[i]!.operation, sdX + 4, y + 12, bufW - 6);
+    const inst = sdRows[i];
+    box(ctx, sdX, y, bufW, H, inst ? colorFor(inst.absoluteIndex) : undefined);
+    if (inst) {
+      clippedText(ctx, inst.operation, sdX + 4, y + 12, bufW - 6, H);
+      anchors.set(inst.absoluteIndex, { x: sdX, y: y + H / 2 });
+    }
   }
   const sdBottom = bufTopY + sdCount * H;
 
-  // ---- RS groups + FU labels ----
-  ctx.font = normal;
+  // ---- RS groups: op | src1 | src2 with per-operand READY/WAIT status ----
+  const rsGroupBottom = (g: RSGroup) => rsTopY + g.count * RS_H;
   for (const g of order) {
     for (let r = 0; r < g.count; r++) {
-      const y = rsTopY + r * H;
+      const y = rsTopY + r * RS_H;
       const inst = g.rows[r];
-      const fill = inst ? colorFor(inst.absoluteIndex) : undefined;
-      box(ctx, g.x, y, OP_W, H, fill);
-      box(ctx, g.x + OP_W, y, OPERAND_W, H, fill);
-      box(ctx, g.x + OP_W + OPERAND_W, y, OPERAND_W, H, fill);
+      const baseFill = inst ? colorFor(inst.absoluteIndex) : undefined;
+
+      // op cell
+      box(ctx, g.x, y, OP_W, RS_H, baseFill);
       if (inst) {
-        clippedText(ctx, inst.operation, g.x + 3, y + 12, OP_W - 4);
-        clippedText(ctx, inst.s1 ?? '', g.x + OP_W + 3, y + 12, OPERAND_W - 4);
-        clippedText(ctx, inst.s2 ?? '', g.x + OP_W + OPERAND_W + 3, y + 12, OPERAND_W - 4);
+        ctx.font = bold;
+        clippedText(ctx, inst.operation, g.x + 3, y + 12, OP_W - 4, RS_H);
+        ctx.font = small;
+        clippedText(ctx, `#${inst.absoluteIndex} ${inst.state}`, g.x + 3, y + 24, OP_W - 4, RS_H, '#555');
+        anchors.set(inst.absoluteIndex, { x: g.x + RS_W / 2, y: y + RS_H / 2 });
+      }
+
+      // operand cells
+      for (const which of [1, 2] as const) {
+        const ox = g.x + OP_W + (which - 1) * OPERAND_W;
+        const st = inst ? operandStatus(inst, which) : { kind: 'none' as const };
+        let fill = baseFill;
+        let strokeCol = INK;
+        if (st.kind === 'wait') { fill = WAIT_FILL; strokeCol = WAIT; }
+        else if (st.kind === 'ready') { fill = READY_FILL; strokeCol = READY; }
+        box(ctx, ox, y, OPERAND_W, RS_H, fill, strokeCol);
+        if (inst) {
+          if (st.kind === 'wait') {
+            ctx.font = normal;
+            clippedText(ctx, st.reg, ox + 4, y + 12, OPERAND_W - 6, RS_H, INK);
+            ctx.font = small;
+            clippedText(ctx, `espera #${st.on}`, ox + 4, y + 24, OPERAND_W - 6, RS_H, WAIT);
+          } else if (st.kind === 'ready') {
+            ctx.font = normal;
+            clippedText(ctx, st.reg, ox + 4, y + 12, OPERAND_W - 6, RS_H, INK);
+            ctx.font = small;
+            clippedText(ctx, 'listo', ox + 4, y + 24, OPERAND_W - 6, RS_H, READY);
+          } else {
+            const raw = which === 1 ? inst.s1 : inst.s2;
+            if (raw) { ctx.font = normal; clippedText(ctx, raw, ox + 4, y + 14, OPERAND_W - 6, RS_H, '#555'); }
+          }
+        }
       }
     }
-    const fuY = rsTopY + g.count * H + 6;
+    // FU label
+    const fuY = rsGroupBottom(g) + 6;
     ctx.font = bold;
     box(ctx, g.x, fuY, RS_W, H);
-    clippedText(ctx, g.label, g.x + 6, fuY + 12, RS_W - 8);
+    clippedText(ctx, g.label, g.x + 6, fuY + 12, RS_W - 8, H);
     ctx.font = normal;
   }
-  const rsFuBottom = (g: RSGroup) => rsTopY + g.count * H + 6 + H;
+  const rsFuBottom = (g: RSGroup) => rsGroupBottom(g) + 6 + H;
 
   // ================= WIRING =================
   const opColX = (g: RSGroup) => g.x + OP_W / 2;
@@ -263,42 +323,66 @@ export function drawDiagram(canvas: HTMLCanvasElement, logic: MainLogic): void {
   const leftMost = order[0].x;
   const rightMost = order[order.length - 1].x + RS_W;
 
-  // --- OP bus (green): OP queue -> horizontal bus -> down into each op box ---
   const opSourceX = opQueueX + 20;
   vline(ctx, opSourceX, topY + logic.OpQueue * H, busOpY, WIRE_OP);
   hline(ctx, leftMost, Math.max(rightMost, opSourceX), busOpY, WIRE_OP);
   for (const g of order) vline(ctx, opColX(g), busOpY, rsTopY, WIRE_OP, true);
 
-  // --- src1 bus (orange): Registers -> bus -> down into each src1 box ---
   const regSrcX = registersX + 15;
   vline(ctx, regSrcX, topY + regCount * H, busS1Y, WIRE_SRC1);
   hline(ctx, leftMost, Math.max(rightMost, regSrcX), busS1Y, WIRE_SRC1);
   for (const g of order) vline(ctx, s1ColX(g), busS1Y, rsTopY, WIRE_SRC1, true);
 
-  // --- src2 bus (blue): Registers -> bus -> down into each src2 box ---
   const regSrc2X = registersX + registersW - 15;
   vline(ctx, regSrc2X, topY + regCount * H, busS2Y, WIRE_SRC2);
   hline(ctx, leftMost, Math.max(rightMost, regSrc2X), busS2Y, WIRE_SRC2);
   for (const g of order) vline(ctx, s2ColX(g), busS2Y, rsTopY, WIRE_SRC2, true);
 
-  // --- Common Data Bus (pink) ---
+  // --- Common Data Bus ---
   hline(ctx, ldX, sdX + bufW, cdbY, WIRE_CDB);
   ctx.font = bold; ctx.fillStyle = INK;
   ctx.fillText('Common Data Bus', ldX, cdbY + 18);
   ctx.font = normal;
 
-  // FU -> CDB (each group center down to the bus)
   for (const g of order) {
     const cx = g.x + RS_W / 2;
     vline(ctx, cx, rsFuBottom(g), cdbY, WIRE_CDB, true);
   }
-  // LD buffer -> CDB (down)
   vline(ctx, ldX + bufW / 2, ldBottom, cdbY, WIRE_CDB, true);
-  // CDB -> SD buffer (up)
   vline(ctx, sdX + bufW / 2, cdbY, sdBottom, WIRE_CDB, true);
-  // CDB -> Registers (up along the right edge, clear of the buses)
   const cdbToRegX = registersX + registersW + 24;
   vline(ctx, cdbToRegX, cdbY, topY + regCount * H, WIRE_CDB);
   hline(ctx, registersX + registersW, cdbToRegX, topY + regCount * H - 8, WIRE_CDB);
-  vline(ctx, registersX + registersW + 4, topY + regCount * H - 8, topY + regCount * H - 8, WIRE_CDB, true);
+
+  // ================= DEPENDENCY CONNECTORS =================
+  // For each waiting operand, draw a dashed amber line from the consumer RS to
+  // its producer instruction (if that producer is currently visible). This is
+  // the live "waiting for instruction X" link; it vanishes when resolved.
+  ctx.save();
+  ctx.setLineDash([5, 4]);
+  ctx.lineWidth = 1.5;
+  for (const g of order) {
+    for (let r = 0; r < g.count; r++) {
+      const inst = g.rows[r];
+      if (!inst) continue;
+      const y = rsTopY + r * RS_H;
+      for (const which of [1, 2] as const) {
+        const st = operandStatus(inst, which);
+        if (st.kind !== 'wait') continue;
+        const producer = anchors.get(st.on);
+        if (!producer) continue;
+        const ox = g.x + OP_W + (which - 1) * OPERAND_W + OPERAND_W / 2;
+        const oy = y; // top of the operand cell
+        ctx.strokeStyle = WAIT;
+        ctx.beginPath();
+        ctx.moveTo(ox, oy);
+        const midY = Math.min(oy, producer.y) - 12;
+        ctx.lineTo(ox, midY);
+        ctx.lineTo(producer.x, midY);
+        ctx.lineTo(producer.x, producer.y);
+        ctx.stroke();
+      }
+    }
+  }
+  ctx.restore();
 }

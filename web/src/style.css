@@ -189,6 +189,26 @@ td.mono, td:nth-child(2) { font-family: ui-monospace, monospace; }
 }
 #editor-details[open] > summary { margin-bottom: 8px; }
 
+#latency-details {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  padding: 8px 12px;
+}
+#latency-details > summary {
+  cursor: pointer;
+  font-weight: 600;
+  padding: 4px 0;
+}
+.latency-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-top: 8px;
+}
+.latency-grid .control-group label { font-size: 0.8rem; }
+.latency-grid input[type='number'] { width: 6ch; }
+
 .sr-only {
   position: absolute;
   width: 1px; height: 1px;
