@@ -5,10 +5,11 @@
  * Each reservation-station row shows, per source operand, whether the value is
  * READY (Vj — the source register value is available) or WAITING on a producing
  * instruction (Qj → "#N", i.e. it needs instruction N to write back first).
- * Waiting operands are drawn amber; ready ones green. When a waiting instruction
- * and its producer are both visible, a thin amber connector links them; the
- * connector disappears once the dependency resolves — so you can watch
- * dependencies get satisfied cycle by cycle.
+ * Waiting operands are drawn amber; ready ones green — so you can watch
+ * dependencies get satisfied cycle by cycle without extra connector clutter.
+ *
+ * The SD (store) buffer shows, per store, its Q dependency (the producer of the
+ * value being stored, or the ready register) and its Dir (address expression).
  *
  * Dependency data comes straight from the engine: on issue, each operand is
  * either resolved to a value (ValueRegN) or tagged with the producer's
@@ -62,6 +63,19 @@ function operandStatus(inst: InstructionInfo, which: 1 | 2): OperandStatus {
   return { kind: 'ready', reg };
 }
 
+/**
+ * Reconstruct a load/store address expression "offset(baseReg)" from the engine
+ * fields. The parser stores the offset in ValueReg1 and the base register in
+ * SourceReg2 (or a literal in ValueReg2). s1/s2 are intentionally left unset for
+ * LOAD/SAVE to match the Java engine, so we rebuild the display string here.
+ */
+function storeDir(inst: InstructionInfo): string {
+  const offset = inst.ValueReg1 ?? 0;
+  const base = inst.SourceReg2 ?? (inst.ValueReg2 != null ? String(inst.ValueReg2) : '');
+  if (base) return `${offset}(${base})`;
+  return String(offset);
+}
+
 function buildGroups(logic: MainLogic): Record<string, RSGroup> {
   const num = logic.architectureNum;
   const groups: Record<string, RSGroup> = {
@@ -110,24 +124,14 @@ function clippedText(ctx: CanvasRenderingContext2D, s: string, x: number, y: num
   ctx.restore();
 }
 
-function hline(ctx: CanvasRenderingContext2D, x1: number, x2: number, y: number, color: string, width = 2) {
+function hline(ctx: CanvasRenderingContext2D, x1: number, x2: number, y: number, color: string, width = 1) {
   ctx.strokeStyle = color; ctx.lineWidth = width;
   ctx.beginPath(); ctx.moveTo(x1, y); ctx.lineTo(x2, y); ctx.stroke();
 }
 
-function vline(ctx: CanvasRenderingContext2D, x: number, y1: number, y2: number, color: string, arrow = false) {
-  ctx.strokeStyle = color; ctx.lineWidth = 2;
+function vline(ctx: CanvasRenderingContext2D, x: number, y1: number, y2: number, color: string) {
+  ctx.strokeStyle = color; ctx.lineWidth = 1;
   ctx.beginPath(); ctx.moveTo(x, y1); ctx.lineTo(x, y2); ctx.stroke();
-  if (arrow) {
-    const dir = y2 > y1 ? 1 : -1;
-    ctx.fillStyle = color;
-    ctx.beginPath();
-    ctx.moveTo(x, y2);
-    ctx.lineTo(x - 4, y2 - dir * 6);
-    ctx.lineTo(x + 4, y2 - dir * 6);
-    ctx.closePath();
-    ctx.fill();
-  }
 }
 
 function opQueueEntries(logic: MainLogic): string[] {
@@ -143,9 +147,6 @@ function opQueueEntries(logic: MainLogic): string[] {
   }
   return out;
 }
-
-/** Center point of the anchor for an instruction (by absoluteIndex) if visible. */
-type Anchor = { x: number; y: number };
 
 export function drawDiagram(canvas: HTMLCanvasElement, logic: MainLogic): void {
   const ctx = canvas.getContext('2d');
@@ -181,8 +182,11 @@ export function drawDiagram(canvas: HTMLCanvasElement, logic: MainLogic): void {
   const registersW = 120;
   const bufTopY = 150;
   const ldX = 40;
-  const sdX = 900;
+  const sdX = 872;
   const bufW = 90;
+  const sdOpW = 54;
+  const sdDirW = 66;
+  const sdW = sdOpW + sdDirW;
 
   const busOpY = 300;
   const busS1Y = 315;
@@ -197,10 +201,6 @@ export function drawDiagram(canvas: HTMLCanvasElement, logic: MainLogic): void {
   groups.MUL.x = rsBaseX[2];
   groups.DIV.x = rsBaseX[3];
   const order: RSGroup[] = [groups.INT, groups.ADD, groups.MUL, groups.DIV];
-
-  // Anchors: where each in-flight instruction (by absoluteIndex) is drawn, so we
-  // can draw dependency connectors from a waiting operand to its producer.
-  const anchors = new Map<number, Anchor>();
 
   // ---- OP Queue ----
   ctx.font = bold; ctx.fillStyle = INK;
@@ -239,27 +239,45 @@ export function drawDiagram(canvas: HTMLCanvasElement, logic: MainLogic): void {
     box(ctx, ldX, y, bufW, H, inst ? colorFor(inst.absoluteIndex) : undefined);
     if (inst) {
       clippedText(ctx, `${inst.operation} ${inst.DestReg ?? ''}`, ldX + 4, y + 12, bufW - 6, H);
-      anchors.set(inst.absoluteIndex, { x: ldX + bufW, y: y + H / 2 });
     }
   }
   const ldBottom = bufTopY + ldCount * H;
 
-  // ---- SD Buffer ----
+  // ---- SD Buffer (shows Q = dependency being waited on, and Dir = address) ----
   ctx.font = bold; ctx.fillStyle = INK;
-  ctx.fillText('SD Buffer (To Memory)', sdX - 24, bufTopY - 8);
+  ctx.fillText('SD Buffer (To Memory)', sdX, bufTopY - 8);
+  // column headers
+  ctx.font = small; ctx.fillStyle = '#555';
+  ctx.fillText('Op / Q', sdX + 4, bufTopY - 1 + H);
+  ctx.fillText('Dir', sdX + sdOpW + 4, bufTopY - 1 + H);
+  const sdHdrY = bufTopY + H;
   ctx.font = normal;
   const sdCount = logic.architectureNum[1];
   const sdRows = collectBuffer(logic, 'SAVE', sdCount);
   for (let i = 0; i < sdCount; i++) {
-    const y = bufTopY + i * H;
+    const y = sdHdrY + i * RS_H;
     const inst = sdRows[i];
-    box(ctx, sdX, y, bufW, H, inst ? colorFor(inst.absoluteIndex) : undefined);
+    const fill = inst ? colorFor(inst.absoluteIndex) : undefined;
+    // Op / Q cell
+    box(ctx, sdX, y, sdOpW, RS_H, fill);
+    // Dir cell
+    box(ctx, sdX + sdOpW, y, sdDirW, RS_H, fill);
     if (inst) {
-      clippedText(ctx, inst.operation, sdX + 4, y + 12, bufW - 6, H);
-      anchors.set(inst.absoluteIndex, { x: sdX, y: y + H / 2 });
+      ctx.font = normal;
+      clippedText(ctx, inst.operation, sdX + 4, y + 12, sdOpW - 6, RS_H);
+      // Q: for a store the value comes from DestReg; it waits on waiForIndexDest
+      ctx.font = small;
+      if (inst.waiForIndexDest != null && inst.ValueDest == null) {
+        clippedText(ctx, `Q #${inst.waiForIndexDest}`, sdX + 4, y + 24, sdOpW - 6, RS_H, WAIT);
+      } else {
+        clippedText(ctx, `Q ${inst.DestReg ?? '—'}`, sdX + 4, y + 24, sdOpW - 6, RS_H, READY);
+      }
+      // Dir: the address expression, reconstructed as offset(baseReg)
+      ctx.font = normal;
+      clippedText(ctx, storeDir(inst), sdX + sdOpW + 4, y + 18, sdDirW - 6, RS_H, INK);
     }
   }
-  const sdBottom = bufTopY + sdCount * H;
+  const sdBottom = sdHdrY + sdCount * RS_H;
 
   // ---- RS groups: op | src1 | src2 with per-operand READY/WAIT status ----
   const rsGroupBottom = (g: RSGroup) => rsTopY + g.count * RS_H;
@@ -276,7 +294,6 @@ export function drawDiagram(canvas: HTMLCanvasElement, logic: MainLogic): void {
         clippedText(ctx, inst.operation, g.x + 3, y + 12, OP_W - 4, RS_H);
         ctx.font = small;
         clippedText(ctx, `#${inst.absoluteIndex} ${inst.state}`, g.x + 3, y + 24, OP_W - 4, RS_H, '#555');
-        anchors.set(inst.absoluteIndex, { x: g.x + RS_W / 2, y: y + RS_H / 2 });
       }
 
       // operand cells
@@ -300,6 +317,7 @@ export function drawDiagram(canvas: HTMLCanvasElement, logic: MainLogic): void {
             ctx.font = small;
             clippedText(ctx, 'listo', ox + 4, y + 24, OPERAND_W - 6, RS_H, READY);
           } else {
+            // immediate / no reg source: show stored value operand text if any
             const raw = which === 1 ? inst.s1 : inst.s2;
             if (raw) { ctx.font = normal; clippedText(ctx, raw, ox + 4, y + 14, OPERAND_W - 6, RS_H, '#555'); }
           }
@@ -326,63 +344,31 @@ export function drawDiagram(canvas: HTMLCanvasElement, logic: MainLogic): void {
   const opSourceX = opQueueX + 20;
   vline(ctx, opSourceX, topY + logic.OpQueue * H, busOpY, WIRE_OP);
   hline(ctx, leftMost, Math.max(rightMost, opSourceX), busOpY, WIRE_OP);
-  for (const g of order) vline(ctx, opColX(g), busOpY, rsTopY, WIRE_OP, true);
+  for (const g of order) vline(ctx, opColX(g), busOpY, rsTopY, WIRE_OP);
 
   const regSrcX = registersX + 15;
   vline(ctx, regSrcX, topY + regCount * H, busS1Y, WIRE_SRC1);
   hline(ctx, leftMost, Math.max(rightMost, regSrcX), busS1Y, WIRE_SRC1);
-  for (const g of order) vline(ctx, s1ColX(g), busS1Y, rsTopY, WIRE_SRC1, true);
+  for (const g of order) vline(ctx, s1ColX(g), busS1Y, rsTopY, WIRE_SRC1);
 
   const regSrc2X = registersX + registersW - 15;
   vline(ctx, regSrc2X, topY + regCount * H, busS2Y, WIRE_SRC2);
   hline(ctx, leftMost, Math.max(rightMost, regSrc2X), busS2Y, WIRE_SRC2);
-  for (const g of order) vline(ctx, s2ColX(g), busS2Y, rsTopY, WIRE_SRC2, true);
+  for (const g of order) vline(ctx, s2ColX(g), busS2Y, rsTopY, WIRE_SRC2);
 
   // --- Common Data Bus ---
-  hline(ctx, ldX, sdX + bufW, cdbY, WIRE_CDB);
+  hline(ctx, ldX, sdX + sdW, cdbY, WIRE_CDB);
   ctx.font = bold; ctx.fillStyle = INK;
   ctx.fillText('Common Data Bus', ldX, cdbY + 18);
   ctx.font = normal;
 
   for (const g of order) {
     const cx = g.x + RS_W / 2;
-    vline(ctx, cx, rsFuBottom(g), cdbY, WIRE_CDB, true);
+    vline(ctx, cx, rsFuBottom(g), cdbY, WIRE_CDB);
   }
-  vline(ctx, ldX + bufW / 2, ldBottom, cdbY, WIRE_CDB, true);
-  vline(ctx, sdX + bufW / 2, cdbY, sdBottom, WIRE_CDB, true);
+  vline(ctx, ldX + bufW / 2, ldBottom, cdbY, WIRE_CDB);
+  vline(ctx, sdX + sdW / 2, cdbY, sdBottom, WIRE_CDB);
   const cdbToRegX = registersX + registersW + 24;
   vline(ctx, cdbToRegX, cdbY, topY + regCount * H, WIRE_CDB);
   hline(ctx, registersX + registersW, cdbToRegX, topY + regCount * H - 8, WIRE_CDB);
-
-  // ================= DEPENDENCY CONNECTORS =================
-  // For each waiting operand, draw a dashed amber line from the consumer RS to
-  // its producer instruction (if that producer is currently visible). This is
-  // the live "waiting for instruction X" link; it vanishes when resolved.
-  ctx.save();
-  ctx.setLineDash([5, 4]);
-  ctx.lineWidth = 1.5;
-  for (const g of order) {
-    for (let r = 0; r < g.count; r++) {
-      const inst = g.rows[r];
-      if (!inst) continue;
-      const y = rsTopY + r * RS_H;
-      for (const which of [1, 2] as const) {
-        const st = operandStatus(inst, which);
-        if (st.kind !== 'wait') continue;
-        const producer = anchors.get(st.on);
-        if (!producer) continue;
-        const ox = g.x + OP_W + (which - 1) * OPERAND_W + OPERAND_W / 2;
-        const oy = y; // top of the operand cell
-        ctx.strokeStyle = WAIT;
-        ctx.beginPath();
-        ctx.moveTo(ox, oy);
-        const midY = Math.min(oy, producer.y) - 12;
-        ctx.lineTo(ox, midY);
-        ctx.lineTo(producer.x, midY);
-        ctx.lineTo(producer.x, producer.y);
-        ctx.stroke();
-      }
-    }
-  }
-  ctx.restore();
 }
