@@ -1,21 +1,13 @@
-/*
- * Reference (original) Java Swing engine, preserved for provenance and to
- * validate the TypeScript port. This file is NOT built or run by the web app;
- * it documents the source-of-truth algorithm. The web engine lives in
- * web/src/engine/mainLogic.ts and is validated against this file's HeadlessTest
- * output (see web/test/golden).
- *
- * Original project: Tomasulo-Visual (com.miracleyoo).
- */
-package com.miracleyoo.Logic;
+# Reference: original Java Swing engine
 
-import java.util.*;
-import java.util.Map;
+This folder preserves the original Tomasulo-Visual engine for provenance and to
+document the algorithm the web port replicates. **It is not built or executed by
+the web app.** The authoritative, runnable engine is the TypeScript port in
+[`../web/src/engine/`](../web/src/engine/).
 
-// NOTE: full original source. See git history of Tomasulo-Visual for context.
-// The authoritative, executable engine for the web app is the TypeScript port.
-public class MainLogic {
-    // See web/src/engine/mainLogic.ts for the ported, documented implementation.
-    // This reference copy is intentionally kept in sync with that port's
-    // behavior; the golden fidelity test guarantees the timing tables match.
-}
+`HeadlessTest.java` is the harness that produced the golden baselines in
+`../web/test/golden/`. The web fidelity test (`npm test` in `web/`) confirms the
+TypeScript engine reproduces those timing tables exactly for all 7 samples.
+
+The full original GUI sources (Swing UIs, Diagram, etc.) live in the upstream
+Tomasulo-Visual project and are omitted here since they cannot run in a browser.
