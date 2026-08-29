@@ -44,8 +44,28 @@
         <p id="status" class="status" aria-live="polite" role="status">Ciclo 0</p>
       </section>
 
+      <section aria-label="Código fuente del programa">
+        <h2>Código (editable)</h2>
+        <p class="hint">
+          Elegí un ejemplo o cargá un archivo para ver su código acá. Podés
+          editarlo y luego pulsar <strong>Cargar / Simular</strong> para correr
+          tu versión.
+        </p>
+        <textarea
+          id="source-editor"
+          class="source-editor"
+          spellcheck="false"
+          aria-label="Editor de código del programa a simular"
+          rows="14"
+        ></textarea>
+        <div class="editor-actions">
+          <button id="btn-load" type="button">Cargar / Simular</button>
+          <span id="editor-status" class="editor-status" aria-live="polite"></span>
+        </div>
+      </section>
+
       <section aria-label="Diagrama de estaciones de reserva y registros">
-        <h2>Diagrama (Tomasulo Dynamic Chart)</h2>
+        <h2>Diagrama</h2>
         <canvas id="diagram" width="980" height="420" aria-hidden="true"></canvas>
       </section>
 

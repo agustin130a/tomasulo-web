@@ -131,6 +131,39 @@ td.mono, td:nth-child(2) { font-family: ui-monospace, monospace; }
 }
 .reg-chip.busy { border-color: #fb8500; background: #fff4e6; }
 
+.hint {
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.source-editor {
+  width: 100%;
+  min-height: 220px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.85rem;
+  line-height: 1.45;
+  color: var(--ink);
+  background: #fbfdff;
+  resize: vertical;
+  tab-size: 4;
+  white-space: pre;
+  overflow-wrap: normal;
+  overflow-x: auto;
+}
+
+.editor-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 10px;
+}
+.editor-status { font-size: 0.85rem; color: var(--muted); }
+.editor-status.error { color: #c0392b; }
+
 .sr-only {
   position: absolute;
   width: 1px; height: 1px;
