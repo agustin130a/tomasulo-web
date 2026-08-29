@@ -124,8 +124,11 @@ function opQueueEntries(logic: MainLogic): string[] {
     const k = start + j;
     if (logic.isEnd || k >= logic.InstructionFullList.length) { out.push(''); continue; }
     let raw = logic.InstructionFullList[k];
-    if (raw.split(':').length > 1) raw = raw.split(':')[1];
-    out.push(raw.split(';')[0].trim());
+    // Strip the comment FIRST (a comment like "; S3: MULT ..." can contain ':').
+    raw = raw.split(';')[0];
+    // Then drop a leading label ("main: l.d ...").
+    if (raw.split(':').length > 1) raw = raw.split(':').slice(1).join(':');
+    out.push(raw.trim());
   }
   return out;
 }
@@ -180,8 +183,11 @@ export function drawDiagram(canvas: HTMLCanvasElement, logic: MainLogic): void {
   ctx.fillText('OP Queue', opQueueX, topY - 8);
   const opEntries = opQueueEntries(logic);
   ctx.font = normal;
+  // Original layout: the next-to-issue instruction sits at the BOTTOM row and
+  // pending instructions stack upward (Diagram.java draws with originY - h*q).
   for (let i = 0; i < logic.OpQueue; i++) {
-    const y = topY + i * H;
+    const rowFromBottom = logic.OpQueue - 1 - i;
+    const y = topY + rowFromBottom * H;
     const entry = opEntries[i];
     box(ctx, opQueueX, y, opQueueW, H, entry ? colorFor(logic.instructionLineCur + i) : undefined);
     if (entry) clippedText(ctx, entry, opQueueX + 4, y + 12, opQueueW - 6);

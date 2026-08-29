@@ -18,7 +18,7 @@
     </header>
 
     <main id="main">
-      <section class="controls" aria-label="Controles de simulación">
+      <section class="controls" aria-label="Selección de programa">
         <div class="control-group">
           <label for="example-select">Ejemplo</label>
           <select id="example-select"></select>
@@ -29,44 +29,44 @@
           <input id="file-input" type="file" accept=".s,.asm,text/plain" />
         </div>
 
-        <div class="control-group buttons" role="group" aria-label="Ejecución">
-          <button id="btn-step" type="button">Paso (1 ciclo)</button>
-          <button id="btn-multi" type="button">Multi-paso</button>
-          <button id="btn-run" type="button">Ejecutar todo</button>
-          <button id="btn-reset" type="button">Reiniciar</button>
-        </div>
-
-        <div class="control-group">
-          <label for="multi-num">Ciclos por multi-paso</label>
-          <input id="multi-num" type="number" min="1" max="100" value="3" />
-        </div>
-
-        <p id="status" class="status" aria-live="polite" role="status">Ciclo 0</p>
+        <button id="btn-load" type="button">Cargar / Simular</button>
+        <span id="editor-status" class="editor-status" aria-live="polite"></span>
       </section>
 
       <section aria-label="Código fuente del programa">
-        <h2>Código (editable)</h2>
-        <p class="hint">
-          Elegí un ejemplo o cargá un archivo para ver su código acá. Podés
-          editarlo y luego pulsar <strong>Cargar / Simular</strong> para correr
-          tu versión.
-        </p>
-        <textarea
-          id="source-editor"
-          class="source-editor"
-          spellcheck="false"
-          aria-label="Editor de código del programa a simular"
-          rows="14"
-        ></textarea>
-        <div class="editor-actions">
-          <button id="btn-load" type="button">Cargar / Simular</button>
-          <span id="editor-status" class="editor-status" aria-live="polite"></span>
-        </div>
+        <details id="editor-details">
+          <summary>Ver / editar código</summary>
+          <p class="hint">
+            Editá el código y pulsá <strong>Cargar / Simular</strong> (arriba)
+            para correr tu versión.
+          </p>
+          <textarea
+            id="source-editor"
+            class="source-editor"
+            spellcheck="false"
+            aria-label="Editor de código del programa a simular"
+            rows="14"
+          ></textarea>
+        </details>
       </section>
 
       <section aria-label="Diagrama de estaciones de reserva y registros">
         <h2>Diagrama</h2>
         <canvas id="diagram" width="1000" height="520" aria-hidden="true"></canvas>
+
+        <div class="run-controls">
+          <div class="control-group buttons" role="group" aria-label="Ejecución">
+            <button id="btn-step" type="button">Paso (1 ciclo)</button>
+            <button id="btn-multi" type="button">Multi-paso</button>
+            <button id="btn-run" type="button">Ejecutar todo</button>
+            <button id="btn-reset" type="button">Reiniciar</button>
+          </div>
+          <div class="control-group">
+            <label for="multi-num">Ciclos por multi-paso</label>
+            <input id="multi-num" type="number" min="1" max="100" value="3" />
+          </div>
+          <p id="status" class="status" aria-live="polite" role="status">Ciclo 0</p>
+        </div>
       </section>
 
       <section aria-label="Tabla de tiempos de las instrucciones">

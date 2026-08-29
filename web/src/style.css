@@ -37,7 +37,7 @@ header h1 { margin: 0; font-size: 1.5rem; }
 .subtitle { margin: 4px 0 0; color: var(--muted); }
 
 main {
-  max-width: 1040px;
+  max-width: 1000px;
   margin: 0 auto;
   padding: 24px;
   display: grid;
@@ -164,6 +164,31 @@ td.mono, td:nth-child(2) { font-family: ui-monospace, monospace; }
 .editor-status { font-size: 0.85rem; color: var(--muted); }
 .editor-status.error { color: #c0392b; }
 
+.run-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 16px;
+  margin-top: 12px;
+  padding: 12px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+#editor-details {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  padding: 8px 12px;
+}
+#editor-details > summary {
+  cursor: pointer;
+  font-weight: 600;
+  padding: 4px 0;
+}
+#editor-details[open] > summary { margin-bottom: 8px; }
+
 .sr-only {
   position: absolute;
   width: 1px; height: 1px;
@@ -173,7 +198,7 @@ td.mono, td:nth-child(2) { font-family: ui-monospace, monospace; }
 }
 
 footer {
-  max-width: 1040px;
+  max-width: 1000px;
   margin: 0 auto;
   padding: 16px 24px 40px;
   color: var(--muted);
