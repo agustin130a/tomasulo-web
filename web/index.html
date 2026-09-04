@@ -9,15 +9,50 @@
       content="Simulador web del algoritmo de Tomasulo, ciclo a ciclo, portado de Tomasulo-Visual."
     />
     <link rel="stylesheet" href="/src/style.css" />
+    <script>
+      // Apply saved/system theme before paint to avoid a flash of the wrong theme.
+      (function () {
+        try {
+          var t = localStorage.getItem('tw-theme');
+          if (!t) {
+            t = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+          }
+          document.documentElement.dataset.theme = t;
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
     <a class="skip-link" href="#main">Saltar al contenido</a>
     <header>
-      <h1>Tomasulo Web</h1>
-      <p class="subtitle">Simulador ciclo a ciclo del algoritmo de Tomasulo (Issue → Execute → Write Back)</p>
+      <div class="header-inner">
+        <div>
+          <h1>Tomasulo Web</h1>
+          <p class="subtitle">Simulador ciclo a ciclo del algoritmo de Tomasulo (Issue → Execute → Write Back)</p>
+        </div>
+        <button
+          id="theme-toggle"
+          class="theme-toggle"
+          type="button"
+          aria-pressed="false"
+          title="Cambiar entre modo claro y oscuro"
+        >
+          <span class="icon" aria-hidden="true">🌙</span>
+          <span class="theme-label-light">Modo oscuro</span>
+          <span class="theme-label-dark">Modo claro</span>
+        </button>
+      </div>
     </header>
 
     <main id="main">
+      <section class="page-nav" aria-label="Otros simuladores">
+        <div class="page-nav-text">
+          <strong>Predicción de saltos</strong>
+          <span>Guía interactiva: contador saturado, predictor local, global e híbrido.</span>
+        </div>
+        <a class="page-nav-link" href="predictores.html">Abrir simulador de predictores →</a>
+      </section>
+
       <section class="controls" aria-label="Selección de programa">
         <div class="control-group">
           <label for="example-select">Ejemplo</label>
@@ -143,5 +178,25 @@
     </footer>
 
     <script type="module" src="/src/main.ts"></script>
+    <script>
+      (function () {
+        var btn = document.getElementById('theme-toggle');
+        if (!btn) return;
+        function sync() {
+          var dark = document.documentElement.dataset.theme === 'dark';
+          btn.setAttribute('aria-pressed', dark ? 'true' : 'false');
+          var icon = btn.querySelector('.icon');
+          if (icon) icon.textContent = dark ? '☀️' : '🌙';
+        }
+        btn.addEventListener('click', function () {
+          var el = document.documentElement;
+          var next = el.dataset.theme === 'dark' ? 'light' : 'dark';
+          el.dataset.theme = next;
+          try { localStorage.setItem('tw-theme', next); } catch (e) {}
+          sync();
+        });
+        sync();
+      })();
+    </script>
   </body>
 </html>
